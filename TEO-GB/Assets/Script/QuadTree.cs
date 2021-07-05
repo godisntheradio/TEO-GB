@@ -5,6 +5,7 @@ using UnityEngine;
 public class QuadTree
 {
     const int CAPACITY = 1;
+    const float MIN_SIZE = 5.0f;
     Vector4 BASE_COLOR = new Color(1, 0.4f, 0.39f, 1.0f);
 
     Bounds boundary;
@@ -18,7 +19,16 @@ public class QuadTree
     // bottom right
     QuadTree BR;
 
+    Bounds boundTL;
+    Bounds boundTR;
+    Bounds boundBR;
+    Bounds boundBL;
+
+    Vector3 subQuadSize;
+
     List<Transform> objects;
+
+    bool subdivided = false;
 
     public QuadTree(Bounds bounds)
     {
@@ -37,36 +47,59 @@ public class QuadTree
         if (!boundary.Contains(new Vector3(transform.position.x, 0, transform.position.z)))
             return false;
 
-        if (objects.Count < CAPACITY && TL == null)
+        //if (objects.Count < CAPACITY && TL == null)
+        //{
+        //    objects.Add(transform);
+        //    return true;
+        //}
+
+        if ((boundary.extents.x <= MIN_SIZE && boundary.extents.z <= MIN_SIZE)) // (transform.localScale.x > boundTL.size.x || transform.localScale.z > boundTL.size.z)
         {
             objects.Add(transform);
             return true;
         }
 
-        if (TL == null)
-            Subdivide(transform);
+        if (!subdivided) Subdivide();
 
-        if (TL.Insert(transform)) return true;
-        if (TR.Insert(transform)) return true;
-        if (BL.Insert(transform)) return true;
-        if (BR.Insert(transform)) return true;
+        if (boundTL.Contains(transform.position))
+        {
+            TL = new QuadTree(boundTL);
+            if (TL.Insert(transform)) return true;
+        }
+        if (boundTR.Contains(transform.position))
+        {
+            TR = new QuadTree(boundTR);
+            if (TR.Insert(transform)) return true;
+        }
+        if (boundBR.Contains(transform.position))
+        {
+            BR = new QuadTree(boundBR);
+            if (BR.Insert(transform)) return true;
+        }
+        if (boundBL.Contains(transform.position))
+        {
+            BL = new QuadTree(boundBL);
+            if (BL.Insert(transform)) return true;
+        }
 
         return false;
     }
     // passa tambem o transform para criar os bounds 
-    private void Subdivide(Transform transform)
+    private void Subdivide()
     {
         float halfX = (boundary.extents.x / 2) + boundary.center.x;
         float halfXMinus = (-boundary.extents.x / 2) + boundary.center.x;
         float halfZ = (boundary.extents.z / 2) + boundary.center.z;
         float halfZMinus = (-boundary.extents.z / 2) + boundary.center.z;
 
-        var childBounds = BuildChildBoundSize(transform);
+        this.subQuadSize = new Vector3(boundary.extents.x, boundary.size.y, boundary.extents.z);
 
-        TL = new QuadTree(new Bounds(new Vector3(halfX, transform.position.y, halfZ), childBounds));
-        TR = new QuadTree(new Bounds(new Vector3(halfX, transform.position.y, halfZMinus), childBounds));
-        BL = new QuadTree(new Bounds(new Vector3(halfXMinus, transform.position.y, halfZ), childBounds));
-        BR = new QuadTree(new Bounds(new Vector3(halfXMinus, transform.position.y, halfZMinus), childBounds));
+        boundTL = new Bounds(new Vector3(halfX, boundary.center.y, halfZ), subQuadSize);
+        boundTR = new Bounds(new Vector3(halfX, boundary.center.y, halfZMinus), subQuadSize);
+        boundBR = new Bounds(new Vector3(halfXMinus, boundary.center.y, halfZ), subQuadSize);
+        boundBL = new Bounds(new Vector3(halfXMinus, boundary.center.y, halfZMinus), subQuadSize);
+
+        subdivided = true;
     }
 
     public List<Transform> QueryRange(Bounds range)
