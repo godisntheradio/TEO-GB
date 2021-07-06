@@ -45,9 +45,17 @@ public class EarClipper : MonoBehaviour
     public void Run()
     {
         Points = new LinkedList<Point>(Plotter.Points);
+
+        if (Points.Count < 3)
+        {
+            Debug.Log("precisa de pelo menos 3 vertices");
+            return;
+        }
+
         ConvexPoints = new LinkedList<Point>();
         ConcavePoints = new LinkedList<Point>();
         EarPoints = new LinkedList<Point>();
+
         // ordem de criação dos pontos
         bool counterClockwise = true;
 
@@ -136,20 +144,24 @@ public class EarClipper : MonoBehaviour
 
         while(node != null)
         {
-            // pega o proximo e o anterior baseado na lista de todos os pontos
+            // pega o proximo e o anterior da ear tip baseado na lista de todos os pontos
             var next = GetNext(Points.Find(node.Value));
             var previous = GetPrevious(Points.Find(node.Value));
 
+            // adiciona o triangulo
             indices.Add(node.Value.Index);
             indices.Add(previous.Value.Index);
             indices.Add(next.Value.Index);
 
+            // remove ear tip da lista de pontos
             Points.Remove(node.Value);
+            // remove ear
             EarPoints.Remove(node);
 
+            // se sobrar menos que tres pontos não precisa mais fazer o processo
             if (Points.Count < 3) break;
 
-            // usa o proximo e o anterior da ear tip
+            // reavaliar o proximo e o anterior da ear tip
             bool isNextConvex = ConvexPoints.Contains(next.Value);
             bool isPreviousConvex = ConvexPoints.Contains(previous.Value);
 
@@ -162,6 +174,8 @@ public class EarClipper : MonoBehaviour
             Vector3 p2 = previous.Value.Position;
             Vector3 p3 = GetNext(previous).Value.Position;
 
+            // se era convexo, continuara convexo
+            // se for concavo ele pode ter virado convexo, portanto calcular novamente sua orientacao e a avaliar se é concavo ou convexo
             if (!isNextConvex)
             {
                 var nextOrientation = Math.ComputeOrientation(n1, n2, n3);
@@ -184,6 +198,7 @@ public class EarClipper : MonoBehaviour
                 }
             }
 
+            // se ele o ponto é convexo ou se tornou convexo, reavaliar se ele é uma orelha (pois existe a possibilidade de nao ser mais depois da remoção da orelha mais acima)
             var isNextEar = IsEar(n1, n2, n3);
             var isPreviousEar = IsEar(p1, p2, p3);
             if (isNextConvex && isNextEar)
@@ -208,6 +223,7 @@ public class EarClipper : MonoBehaviour
                     EarPoints.Remove(previous.Value);
             }
 
+            // passar para o primeiro da lista
             node = EarPoints.First;
         }
 
