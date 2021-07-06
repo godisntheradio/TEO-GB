@@ -94,6 +94,7 @@ public class PointPlotter : MonoBehaviour
     {
         FinishedPolygon = false;
         ResetPolygon.Invoke();
+        Line.enabled = true;
         Line.positionCount = 0;
         Points.Clear();
         foreach (Transform item in gameObject.transform)
@@ -102,12 +103,12 @@ public class PointPlotter : MonoBehaviour
         }
     }
 
-    public void PlotPoint(Vector3 pos)
+    public void PlotPoint(Vector3 pos, bool connectToLine = true)
     {
         var point = Instantiate(PointObject, pos, PointObject.transform.rotation, gameObject.transform).GetComponent<Point>();
-        AddVisualPoint(pos);
+        if (connectToLine) AddVisualPoint(pos);
         // inicializa parte visual
-        point.Initialize(Points.Count.ToString());
+        point.Initialize(Points.Count);
         // adiciona na lista encadeada
         Points.AddLast(point);
     }
@@ -119,11 +120,12 @@ public class PointPlotter : MonoBehaviour
         Line.SetPosition(Points.Count, pos);
     }
 
-    public void HidePlanes()
+    public void HideFirstPhase()
     {
         foreach (var item in Points)
         {
             item.Hide();
         }
+        Line.enabled = false;
     }
 }

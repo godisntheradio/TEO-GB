@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class Point : MonoBehaviour
 {
-    string Desc;
+    public int Index;
     public Vector3 Position { get => gameObject.transform.position; }
 
     TextMesh Text;
@@ -17,16 +17,16 @@ public class Point : MonoBehaviour
         Plane = GetComponent<MeshRenderer>();
     }
 
-    public void Initialize(string name)
+    public void Initialize(int index)
     {
         Text = GetComponentInChildren<TextMesh>();
-        Desc = name;
-        Text.text = Desc;
+        Index = index;
+        Text.text = Index.ToString();
     }
 
     public override string ToString()
     {
-        return Desc;
+        return Index.ToString();
     }
 
     public void Hide()

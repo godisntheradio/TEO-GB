@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
+using Util;
 public class EarClipper : MonoBehaviour
 {
     public LinkedList<Point> Points;
@@ -12,9 +12,34 @@ public class EarClipper : MonoBehaviour
 
     public PointPlotter Plotter;
 
+    #region Mesh properties
+
+    Mesh PolygonMesh;
+    Matrix4x4 PolygonMeshMatrix;
+    public Material PolygonMeshMaterial;
+
+    #endregion
+
+    #region UI
+
+    public GameObject ConvexUIList;
+    public GameObject ConcaveUIList;
+    public GameObject EarUIList;
+
+    #endregion
+
     private void Awake()
     {
         Plotter = GetComponent<PointPlotter>();
+    }
+
+    private void Update()
+    {
+        if (PolygonMesh != null)
+        {
+            Graphics.DrawMesh(PolygonMesh, PolygonMeshMatrix, PolygonMeshMaterial, 0);
+        }
+
     }
 
     public void Run()
@@ -38,29 +63,16 @@ public class EarClipper : MonoBehaviour
             var p2 = i1.Value.Position;
             var p3 = i2.Value.Position;
 
-            var orientation = ComputeOrientation(p1, p2, p3);
+            var orientation = Math.ComputeOrientation(p1, p2, p3);
             // é concavo
-            if (orientation <= 0 && counterClockwise)
+            if ((orientation <= 0 && counterClockwise) || (orientation > 0 && !counterClockwise))
                 ConcavePoints.AddLast(i1.Value);
             else // se for convexo, o ponto pode ser uma ear tip
             {
                 ConvexPoints.AddLast(i1.Value);
 
-                bool containsPointInside = false;
-                foreach (var item in Points) // testa esse o triangulo formado por este ponto convexo, o anterior e o proximo contra todos os outros pontos (exceto os que formam esse triangulo) para verificar se é uma orelha
-                {
-                    if (item.Position == p1 || item.Position == p2 || item.Position == p3)
-                        continue;
-
-                    containsPointInside = IsPointInsideTriangle(item.Position, p1, p2, p3);
-
-                    // se achar qualquer ponto dentro já da pra saber que não é uma orelha
-                    if (containsPointInside)
-                        break;
-                }
-
                 // adiciona na lista se nao encontrou nenhum ponto dentro do triangulo
-                if (!containsPointInside)
+                if (IsEar(p1, p2, p3))
                     EarPoints.AddLast(i1.Value);
             }
 
@@ -72,6 +84,23 @@ public class EarClipper : MonoBehaviour
         else
             RunConvex();
 
+    }
+
+    public bool IsEar(Vector3 p1, Vector3 p2, Vector3 p3)
+    {
+        bool containsPointInside = false;
+        foreach (var item in Points) // testa esse o triangulo formado por este ponto convexo, o anterior e o proximo contra todos os outros pontos (exceto os que formam esse triangulo) para verificar se é uma orelha
+        {
+            if (item.Position == p1 || item.Position == p2 || item.Position == p3)
+                continue;
+
+            containsPointInside = Math.IsPointInsideTriangle(item.Position, p1, p2, p3);
+
+            // se achar qualquer ponto dentro já da pra saber que não é uma orelha
+            if (containsPointInside)
+                break;
+        }
+        return !containsPointInside;
     }
 
     // ear clipping
@@ -86,33 +115,207 @@ public class EarClipper : MonoBehaviour
             totalY += item.Position.y;
         }
 
-        Vector3 centroid = new Vector3(totalX / Points.Count, totalY / Points.Count);
+        Vector3 centroid = new Vector3(totalX / Points.Count, totalY / Points.Count, -0.02f);
 
-        Plotter.PlotPoint(centroid);
-        Plotter.HidePlanes();
-
+        Plotter.PlotPoint(centroid, false);
+        Plotter.HideFirstPhase();
+        PolygonMesh = BuildTriangleFan(centroid);
+        PolygonMeshMatrix = Matrix4x4.TRS(gameObject.transform.position, gameObject.transform.rotation, Vector3.one);
     }
 
     public void RunConcave()
     {
         Debug.Log("é um poligono concavo");
+        // mostra listas
+        UpdateUI();
+        ConvexUIList.transform.parent.gameObject.SetActive(true);
+
+        List<int> indices = new List<int>();
+
+        var node = EarPoints.First;
+
+        while(node != null)
+        {
+            // pega o proximo e o anterior baseado na lista de todos os pontos
+            var next = GetNext(Points.Find(node.Value));
+            var previous = GetPrevious(Points.Find(node.Value));
+
+            indices.Add(node.Value.Index);
+            indices.Add(previous.Value.Index);
+            indices.Add(next.Value.Index);
+
+            Points.Remove(node.Value);
+            EarPoints.Remove(node);
+
+            if (Points.Count < 3) break;
+
+            // usa o proximo e o anterior da ear tip
+            bool isNextConvex = ConvexPoints.Contains(next.Value);
+            bool isPreviousConvex = ConvexPoints.Contains(previous.Value);
+
+            // triangulo formado pelo proximo
+            Vector3 n1 = GetPrevious(next).Value.Position;
+            Vector3 n2 = next.Value.Position;
+            Vector3 n3 = GetNext(next).Value.Position;
+
+            Vector3 p1 = GetPrevious(previous).Value.Position;
+            Vector3 p2 = previous.Value.Position;
+            Vector3 p3 = GetNext(previous).Value.Position;
+
+            if (!isNextConvex)
+            {
+                var nextOrientation = Math.ComputeOrientation(n1, n2, n3);
+                if (nextOrientation > 0)
+                {
+                    ConcavePoints.Remove(next.Value);
+                    ConvexPoints.AddLast(next.Value);
+                    isNextConvex = true;
+                }
+            }
+
+            if (!isPreviousConvex)
+            {
+                var previousOrientation = Math.ComputeOrientation(p1, p2, p3);
+                if (previousOrientation > 0)
+                {
+                    ConcavePoints.Remove(previous.Value);
+                    ConvexPoints.AddLast(previous.Value);
+                    isPreviousConvex = true;
+                }
+            }
+
+            var isNextEar = IsEar(n1, n2, n3);
+            var isPreviousEar = IsEar(p1, p2, p3);
+            if (isNextConvex && isNextEar)
+            {
+                if (!EarPoints.Contains(next.Value))
+                    EarPoints.AddFirst(next.Value);
+            } 
+            else if (!isNextEar)
+            {
+                if (EarPoints.Contains(next.Value))
+                    EarPoints.Remove(next.Value);
+            }
+
+            if (isPreviousConvex && isPreviousEar)
+            {
+                if (!EarPoints.Contains(previous.Value))
+                    EarPoints.AddLast(previous.Value);
+            }
+            else if (!isPreviousEar)
+            {
+                if (EarPoints.Contains(previous.Value))
+                    EarPoints.Remove(previous.Value);
+            }
+
+            node = EarPoints.First;
+        }
+
+        Plotter.HideFirstPhase();
+        PolygonMesh = BuildTriangleMesh(ref indices);
+        PolygonMeshMatrix = Matrix4x4.TRS(gameObject.transform.position, gameObject.transform.rotation, Vector3.one);
     }
-    public static float ComputeOrientation(Vector3 p1, Vector3 p2, Vector3 p3)
+
+    public LinkedListNode<Point> GetPrevious(LinkedListNode<Point> node)
     {
-        return (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
+        return node.Previous != null ? node.Previous : Points.Last;
     }
 
-    public static bool IsPointInsideTriangle(Vector3 p, Vector3 p1, Vector3 p2, Vector3 p3)
+    public LinkedListNode<Point> GetNext(LinkedListNode<Point> node)
     {
-        float d1, d2, d3;
+        return node.Next != null ? node.Next : Points.First;
+    }
+   
+    public Mesh BuildTriangleFan(Vector3 centroid)
+    {
+        Mesh mesh = new Mesh();
+        int count = Points.Count + 1;
+        Vector3[] vertices = new Vector3[count];
+        Vector2[] uvs = new Vector2[count];
+        int[] indices = new int[count * 3];
 
-        d1 = ComputeOrientation(p, p1, p2);
-        d2 = ComputeOrientation(p, p2, p3);
-        d3 = ComputeOrientation(p, p3, p1);
+        int i = 0;
+        int j = 0;
+        vertices[i] = centroid;
+        i++;
+        foreach (var item in Points)
+        {
+            vertices[i] = item.Position;
+            uvs[i] = item.Position;
+            indices[j] = 0;
+            indices[j + 1] = i + 1 >= count ? 1 : i + 1;
+            indices[j + 2] = i;
 
-        bool cw = d1 < 0 && d2 < 0 && d3 < 0;
-        bool ccw = d1 > 0 && d2 > 0 && d3 > 0;
+            i++;
+            j+= 3;
+        }
 
-        return cw || ccw;
+
+
+        mesh.SetVertices(vertices);
+        mesh.uv = uvs;
+        mesh.SetIndices(indices, MeshTopology.Triangles, 0);
+
+        return mesh;
+    }
+
+    public Mesh BuildTriangleMesh(ref List<int> listIndices)
+    {
+        Mesh mesh = new Mesh();
+        int count = Plotter.Points.Count;
+        Vector3[] vertices = new Vector3[count];
+        Vector2[] uvs = new Vector2[count];
+        int[] indices = listIndices.ToArray();
+
+        int i = 0;
+
+        foreach (var item in Plotter.Points)
+        {
+            vertices[i] = item.Position;
+            uvs[i] = item.Position;
+            i++;
+        }
+
+
+
+        mesh.SetVertices(vertices);
+        mesh.uv = uvs;
+        mesh.SetIndices(indices, MeshTopology.Triangles, 0);
+
+        return mesh;
+    }
+
+    public void Restart()
+    {
+        if (PolygonMesh != null) PolygonMesh.Clear();
+        PolygonMesh = null;
+
+        ConvexUIList.transform.parent.gameObject.SetActive(false);
+    }
+
+    public void UpdateUI()
+    {
+        string convexResult = "凸: ";
+        string concaveResult = "凹: ";
+        string earResult = "Ear: ";
+
+        foreach (var item in ConvexPoints)
+        {
+            convexResult += item.Index.ToString() + " ";
+        }
+
+        foreach (var item in ConcavePoints)
+        {
+            concaveResult += item.Index.ToString() + " ";
+        }
+
+        foreach (var item in EarPoints)
+        {
+            earResult += item.Index.ToString() + " ";
+        }
+
+        ConvexUIList.GetComponent<UnityEngine.UI.Text>().text = convexResult;
+        ConcaveUIList.GetComponent<UnityEngine.UI.Text>().text = concaveResult;
+        EarUIList.GetComponent<UnityEngine.UI.Text>().text = earResult;
     }
 }
