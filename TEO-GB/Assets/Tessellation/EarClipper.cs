@@ -10,6 +10,8 @@ public class EarClipper : MonoBehaviour
     public LinkedList<Point> ConcavePoints;
     public LinkedList<Point> EarPoints;
 
+    bool IsCounterClockwise;
+
     public PointPlotter Plotter;
 
     #region Mesh properties
@@ -57,7 +59,7 @@ public class EarClipper : MonoBehaviour
         EarPoints = new LinkedList<Point>();
 
         // ordem de criação dos pontos
-        bool counterClockwise = true;
+        IsCounterClockwise = Plotter.IsCounterClockwise;
 
         var i1 = Points.First;
 
@@ -71,9 +73,8 @@ public class EarClipper : MonoBehaviour
             var p2 = i1.Value.Position;
             var p3 = i2.Value.Position;
 
-            var orientation = Math.ComputeOrientation(p1, p2, p3);
             // é concavo
-            if ((orientation <= 0 && counterClockwise) || (orientation > 0 && !counterClockwise))
+            if (!IsConvex(p1, p2, p3))
                 ConcavePoints.AddLast(i1.Value);
             else // se for convexo, o ponto pode ser uma ear tip
             {
@@ -109,6 +110,12 @@ public class EarClipper : MonoBehaviour
                 break;
         }
         return !containsPointInside;
+    }
+
+    public bool IsConvex(Vector3 p1, Vector3 p2, Vector3 p3)
+    {
+        var orientation = Math.ComputeOrientation(p1, p2, p3);
+        return (orientation <= 0 && IsCounterClockwise) || (orientation >= 0 && !IsCounterClockwise);
     }
 
     // ear clipping
@@ -178,8 +185,7 @@ public class EarClipper : MonoBehaviour
             // se for concavo ele pode ter virado convexo, portanto calcular novamente sua orientacao e a avaliar se é concavo ou convexo
             if (!isNextConvex)
             {
-                var nextOrientation = Math.ComputeOrientation(n1, n2, n3);
-                if (nextOrientation > 0)
+                if (IsConvex(n1, n2, n3))
                 {
                     ConcavePoints.Remove(next.Value);
                     ConvexPoints.AddLast(next.Value);
@@ -189,8 +195,7 @@ public class EarClipper : MonoBehaviour
 
             if (!isPreviousConvex)
             {
-                var previousOrientation = Math.ComputeOrientation(p1, p2, p3);
-                if (previousOrientation > 0)
+                if (IsConvex(p1, p2, p3))
                 {
                     ConcavePoints.Remove(previous.Value);
                     ConvexPoints.AddLast(previous.Value);

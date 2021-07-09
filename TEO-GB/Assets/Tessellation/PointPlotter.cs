@@ -14,6 +14,7 @@ public class PointPlotter : MonoBehaviour
     private const string SAFE = "Safe";
     private const string POINT = "Point";
 
+    public bool IsCounterClockwise;
 
     private LineRenderer Line;
     public Material LineMaterial;
@@ -111,6 +112,11 @@ public class PointPlotter : MonoBehaviour
         point.Initialize(Points.Count);
         // adiciona na lista encadeada
         Points.AddLast(point);
+
+        if (Points.Count == 3)
+        {
+            IsCounterClockwise = Util.Math.ComputeOrientation(Points.First.Value.Position, Points.First.Next.Value.Position, Points.First.Next.Next.Value.Position) <= 0;
+        }
     }
 
     public void AddVisualPoint(Vector3 pos)
